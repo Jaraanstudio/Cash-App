@@ -1,0 +1,8 @@
+{
+  "name": "Cash App",
+  "description": "A smart personal finance tracker with voice-activated transaction entry, visual reporting, and bill reminders.",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "majorCapabilities": []
+}
