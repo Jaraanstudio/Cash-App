@@ -10,6 +10,7 @@ export interface GoogleTransaction {
   category: string;
   date: string;
   notes?: string;
+  receiptUrl?: string;
 }
 
 export const createSpreadsheet = async (accessToken: string) => {
@@ -45,6 +46,7 @@ export const createSpreadsheet = async (accessToken: string) => {
                     { userEnteredValue: { stringValue: 'Category' } },
                     { userEnteredValue: { stringValue: 'Date' } },
                     { userEnteredValue: { stringValue: 'Notes' } },
+                    { userEnteredValue: { stringValue: 'ReceiptUrl' } },
                     { userEnteredValue: { stringValue: 'CreatedAt' } },
                   ],
                 },
@@ -140,6 +142,7 @@ export const appendTransaction = async (accessToken: string, spreadsheetId: stri
       tx.category,
       tx.date,
       tx.notes || '',
+      tx.receiptUrl || '',
       new Date().toISOString(),
     ],
   ];
@@ -163,7 +166,7 @@ export const appendTransaction = async (accessToken: string, spreadsheetId: stri
 };
 
 export const fetchTransactionsFromSheet = async (accessToken: string, spreadsheetId: string): Promise<GoogleTransaction[]> => {
-  const response = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Transactions!A2:H`, {
+  const response = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Transactions!A2:I`, {
     headers: {
       Authorization: `Bearer ${accessToken}`,
     },
@@ -187,6 +190,7 @@ export const fetchTransactionsFromSheet = async (accessToken: string, spreadshee
       category: String(row[4] || 'Lainnya'),
       date: String(row[5] || new Date().toISOString().split('T')[0]),
       notes: String(row[6] || ''),
+      receiptUrl: String(row[7] || ''),
     }));
 };
 
@@ -323,4 +327,42 @@ export const addOrUpdateReminderInSheet = async (accessToken: string, spreadshee
   }
 
   return await response.json();
+};
+
+export const uploadFileToDrive = async (accessToken: string, file: File): Promise<string> => {
+  const metadata = {
+    name: `receipt_${Date.now()}_${file.name}`,
+    mimeType: file.type,
+  };
+
+  const form = new FormData();
+  form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+  form.append('file', file);
+
+  const response = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: form,
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to upload file to Google Drive');
+  }
+
+  const data = await response.json();
+  
+  // Make the file readable by link (anyone with link)
+  try {
+    await fetch(`https://www.googleapis.com/drive/v3/files/${data.id}/permissions`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role: 'reader', type: 'anyone' }),
+    });
+  } catch (err) {
+    console.warn('Could not set public permissions on receipt:', err);
+  }
+
+  return data.webViewLink;
 };

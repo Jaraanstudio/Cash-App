@@ -41,9 +41,11 @@ import {
   XAxis,
   YAxis
 } from 'recharts';
-import { format, startOfMonth, endOfMonth, isWithinInterval, parseISO, startOfDay, endOfDay, eachDayOfInterval, subDays } from 'date-fns';
+import { format, startOfMonth, endOfMonth, isWithinInterval, parseISO, startOfDay, endOfDay, eachDayOfInterval, subDays, startOfWeek } from 'date-fns';
 import { id } from 'date-fns/locale';
 import { motion, AnimatePresence } from 'motion/react';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import * as sheetService from './services/googleSheetsService';
 
 // Types
@@ -55,6 +57,7 @@ interface Transaction {
   category: string;
   date: string;
   notes?: string;
+  receiptUrl?: string;
 }
 
 interface GoogleUser {
@@ -99,6 +102,12 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
+  
+  const [reportFilter, setReportFilter] = useState<'week' | 'month' | 'custom'>('month');
+  const [customStart, setCustomStart] = useState(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
+  const [customEnd, setCustomEnd] = useState(format(endOfMonth(new Date()), 'yyyy-MM-dd'));
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+
   const [newTx, setNewTx] = useState({
     title: '',
     amount: '',
@@ -113,8 +122,41 @@ export default function App() {
 
   // Memoized Calculations
   const filteredTransactions = useMemo(() => {
-    return activeCategory === 'Semua' ? transactions : transactions.filter(t => t.category === activeCategory);
+    let list = activeCategory === 'Semua' ? transactions : transactions.filter(t => t.category === activeCategory);
+    return list;
   }, [transactions, activeCategory]);
+
+  const reportTransactions = useMemo(() => {
+    let start = startOfMonth(new Date());
+    let end = endOfMonth(new Date());
+
+    if (reportFilter === 'week') {
+      start = startOfWeek(new Date(), { weekStartsOn: 1 });
+      end = endOfDay(new Date());
+    } else if (reportFilter === 'custom') {
+      start = startOfDay(parseISO(customStart));
+      end = endOfDay(parseISO(customEnd));
+    }
+
+    return transactions.filter(t => {
+      try {
+        const date = parseISO(t.date);
+        return isWithinInterval(date, { start, end });
+      } catch {
+        return false;
+      }
+    });
+  }, [transactions, reportFilter, customStart, customEnd]);
+
+  const reportStats = useMemo(() => {
+    const income = reportTransactions
+      .filter(t => t.type === 'income')
+      .reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
+    const expense = reportTransactions
+      .filter(t => t.type === 'expense')
+      .reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
+    return { income, expense, balance: income - expense };
+  }, [reportTransactions]);
 
   const totalBalance = useMemo(() => {
     return transactions.reduce((acc, t) => {
@@ -388,17 +430,23 @@ export default function App() {
     const amountVal = parseInt(newTx.amount.replace(/\D/g, ''));
     if (isNaN(amountVal)) return;
 
-    const tx: sheetService.GoogleTransaction = {
-      id: Math.random().toString(36).substr(2, 9),
-      title: newTx.title,
-      amount: amountVal,
-      type: newTx.type,
-      category: newTx.category,
-      date: format(new Date(), 'yyyy-MM-dd')
-    };
-
     setIsSyncing(true);
     try {
+      let receiptUrl = '';
+      if (selectedFile) {
+        receiptUrl = await sheetService.uploadFileToDrive(accessToken, selectedFile);
+      }
+
+      const tx: sheetService.GoogleTransaction = {
+        id: Math.random().toString(36).substr(2, 9),
+        title: newTx.title,
+        amount: amountVal,
+        type: newTx.type,
+        category: newTx.category,
+        date: format(new Date(), 'yyyy-MM-dd'),
+        receiptUrl
+      };
+
       await sheetService.appendTransaction(accessToken, spreadsheetId, tx);
       setTransactions([tx, ...transactions]);
 
@@ -420,6 +468,7 @@ export default function App() {
       }
 
       setShowAddModal(false);
+      setSelectedFile(null);
       setNewTx({ title: '', amount: '', type: 'expense', category: 'Makanan & Minuman' });
     } catch (err) {
       setError('Gagal menyimpan transaksi ke Google Sheets.');
@@ -493,6 +542,37 @@ export default function App() {
     } finally {
       setIsSyncing(false);
     }
+  };
+
+  const generatePDF = () => {
+    const doc = new jsPDF();
+    const currentMonth = format(new Date(), 'MMMM yyyy', { locale: id });
+    
+    doc.setFontSize(18);
+    doc.text('Laporan Keuangan', 14, 20);
+    doc.setFontSize(11);
+    doc.text(`Periode: ${reportFilter === 'week' ? 'Minggu Ini' : reportFilter === 'month' ? currentMonth : `${customStart} s/d ${customEnd}`}`, 14, 30);
+    doc.text(`Nama: ${user?.name || '-'}`, 14, 35);
+    
+    doc.text(`Total Pemasukan: ${formatCurrency(reportStats.income)}`, 14, 45);
+    doc.text(`Total Pengeluaran: ${formatCurrency(reportStats.expense)}`, 14, 50);
+    doc.text(`Saldo: ${formatCurrency(reportStats.balance)}`, 14, 55);
+
+    const tableData = reportTransactions.map(t => [
+      t.date,
+      t.title,
+      t.category,
+      t.type === 'income' ? 'Pemasukan' : 'Pengeluaran',
+      formatCurrency(t.amount)
+    ]);
+
+    autoTable(doc, {
+      startY: 65,
+      head: [['Tanggal', 'Judul', 'Kategori', 'Tipe', 'Jumlah']],
+      body: tableData,
+    });
+
+    doc.save(`Laporan_Keuangan_${format(new Date(), 'yyyyMMdd')}.pdf`);
   };
 
   // Calculations
@@ -737,16 +817,75 @@ export default function App() {
         )}
 
         {activeTab === 'report' && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-8">
-            <header className="flex justify-between items-center">
-              <h2 className="text-xl font-bold text-slate-900">Statistik</h2>
-              <div className="bg-white px-4 py-2 rounded-2xl border border-slate-100 text-xs font-bold text-slate-500">
-                {format(new Date(), 'MMMM yyyy', { locale: id })}
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-8 pb-32">
+            <header className="flex flex-col gap-4">
+              <div className="flex justify-between items-center">
+                <h2 className="text-xl font-bold text-slate-900">Statistik</h2>
+                <button 
+                  onClick={generatePDF}
+                  className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-lg shadow-blue-600/20 active:scale-95 transition-all"
+                >
+                  <FileText size={16} />
+                  Download PDF
+                </button>
               </div>
+
+              {/* Filters */}
+              <div className="flex gap-2 bg-slate-100 p-1 rounded-2xl">
+                {(['week', 'month', 'custom'] as const).map((f) => (
+                  <button
+                    key={f}
+                    onClick={() => setReportFilter(f)}
+                    className={`flex-1 py-2 text-[10px] font-bold uppercase tracking-widest rounded-xl transition-all ${reportFilter === f ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500'}`}
+                  >
+                    {f === 'week' ? 'Minggu' : f === 'month' ? 'Bulan' : 'Custom'}
+                  </button>
+                ))}
+              </div>
+
+              {reportFilter === 'custom' && (
+                <div className="flex gap-4 items-center">
+                  <div className="flex-1">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Mulai</label>
+                    <input 
+                      type="date" 
+                      value={customStart} 
+                      onChange={(e) => setCustomStart(e.target.value)}
+                      className="w-full bg-white border border-slate-100 rounded-xl px-4 py-2 text-sm font-medium"
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Selesai</label>
+                    <input 
+                      type="date" 
+                      value={customEnd} 
+                      onChange={(e) => setCustomEnd(e.target.value)}
+                      className="w-full bg-white border border-slate-100 rounded-xl px-4 py-2 text-sm font-medium"
+                    />
+                  </div>
+                </div>
+              )}
             </header>
 
             {/* Income vs Expense Ring */}
             <div className="grid grid-cols-1 gap-6">
+                {/* Summary Cards */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-white p-4 rounded-[24px] border border-slate-100 shadow-sm">
+                    <div className="w-8 h-8 bg-green-50 rounded-xl flex items-center justify-center mb-3">
+                      <TrendingUp size={16} className="text-green-600" />
+                    </div>
+                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Masuk</div>
+                    <div className="text-sm font-bold text-slate-900">{formatCurrency(reportStats.income)}</div>
+                  </div>
+                  <div className="bg-white p-4 rounded-[24px] border border-slate-100 shadow-sm">
+                    <div className="w-8 h-8 bg-red-50 rounded-xl flex items-center justify-center mb-3">
+                      <TrendingDown size={16} className="text-red-600" />
+                    </div>
+                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Keluar</div>
+                    <div className="text-sm font-bold text-slate-900">{formatCurrency(reportStats.expense)}</div>
+                  </div>
+                </div>
                <div className="card text-center p-8">
                   <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-6">Distribusi Pengeluaran</h3>
               <div className="h-[240px] w-full flex items-center justify-center relative">
@@ -891,6 +1030,28 @@ export default function App() {
                     </div>
                 </div>
 
+                {selectedTx.receiptUrl && (
+                  <div>
+                    <label className="flex items-center gap-2 text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">
+                      <FileSpreadsheet size={14} /> Nota / Bukti
+                    </label>
+                    <a 
+                      href={selectedTx.receiptUrl} 
+                      target="_blank" 
+                      rel="noreferrer"
+                      className="flex items-center gap-4 p-4 bg-white rounded-2xl border border-slate-100 shadow-sm active:scale-95 transition-transform"
+                    >
+                      <div className="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center text-blue-600">
+                        <FileText size={20} />
+                      </div>
+                      <div className="flex-1">
+                        <div className="text-xs font-bold text-slate-800">Lihat Nota</div>
+                        <div className="text-[10px] text-slate-400 font-medium tracking-tight">Klik untuk membuka di tab baru</div>
+                      </div>
+                    </a>
+                  </div>
+                )}
+
                 <div className="flex gap-4">
                   <button onClick={() => setSelectedTx(null)} className="flex-1 bg-blue-600 text-white rounded-2xl py-4 font-bold text-sm shadow-lg shadow-blue-500/20 active:scale-95 transition-all">
                     Selesai
@@ -1020,6 +1181,41 @@ export default function App() {
                       </button>
                     ))}
                   </div>
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-2 px-1">Nota / Bukti (Opsional)</label>
+                  <input 
+                    type="file" 
+                    accept="image/*"
+                    onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
+                    className="hidden" 
+                    id="receipt-upload-manual"
+                  />
+                  <label 
+                    htmlFor="receipt-upload-manual"
+                    className={`w-full flex items-center gap-3 p-4 border-2 border-dashed rounded-2xl cursor-pointer transition-all ${selectedFile ? 'border-blue-600 bg-blue-50/50' : 'border-slate-100 bg-slate-50'}`}
+                  >
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${selectedFile ? 'bg-blue-600 text-white' : 'bg-white text-slate-400 shadow-sm'}`}>
+                      {selectedFile ? <FileText size={18} /> : <Plus size={18} />}
+                    </div>
+                    <div className="flex-1 overflow-hidden">
+                      <div className={`text-[10px] font-bold uppercase tracking-widest ${selectedFile ? 'text-blue-600' : 'text-slate-400'}`}>
+                        {selectedFile ? selectedFile.name : 'Tambahkan Nota'}
+                      </div>
+                      <div className="text-[9px] text-slate-400 font-medium truncate">
+                        {selectedFile ? 'File siap diupload' : 'Format gambar (JPG, PNG)'}
+                      </div>
+                    </div>
+                    {selectedFile && (
+                      <button 
+                        onClick={(e) => { e.preventDefault(); setSelectedFile(null); }}
+                        className="p-1 bg-red-50 text-red-500 rounded-lg"
+                      >
+                        <X size={14} />
+                      </button>
+                    )}
+                  </label>
                 </div>
 
                 <button 
