@@ -124,17 +124,19 @@ export const fetchTransactionsFromSheet = async (accessToken: string, spreadshee
   }
 
   const data = await response.json();
-  if (!data.values) return [];
+  if (!data.values || !Array.isArray(data.values)) return [];
 
-  return data.values.map((row: any[]) => ({
-    id: row[0],
-    title: row[1],
-    amount: parseFloat(row[2]),
-    type: row[3] as 'income' | 'expense',
-    category: row[4],
-    date: row[5],
-    notes: row[6],
-  }));
+  return data.values
+    .filter((row: any[]) => row && row.length >= 4) // Ensure row has at least ID, Title, Amount, Type
+    .map((row: any[]) => ({
+      id: String(row[0] || ''),
+      title: String(row[1] || 'Transaksi Tanpa Judul'),
+      amount: parseFloat(row[2]) || 0,
+      type: (row[3] === 'income' || row[3] === 'expense' ? row[3] : 'expense') as 'income' | 'expense',
+      category: String(row[4] || 'Lainnya'),
+      date: String(row[5] || new Date().toISOString().split('T')[0]),
+      notes: String(row[6] || ''),
+    }));
 };
 
 export const deleteTransactionFromSheet = async (accessToken: string, spreadsheetId: string, txId: string) => {

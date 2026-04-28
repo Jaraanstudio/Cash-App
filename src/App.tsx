@@ -279,6 +279,73 @@ export default function App() {
     }
   };
 
+  // Calculations
+  const filteredTransactions = useMemo(() => {
+    let list = activeCategory === 'Semua' ? transactions : transactions.filter(t => t.category === activeCategory);
+    return list;
+  }, [transactions, activeCategory]);
+
+  const totalBalance = useMemo(() => {
+    return transactions.reduce((acc, t) => {
+      const amount = Number(t.amount) || 0;
+      return t.type === 'income' ? acc + amount : acc - amount;
+    }, 0);
+  }, [transactions]);
+
+  const monthlyIncome = useMemo(() => {
+    try {
+      const start = startOfMonth(new Date());
+      const end = endOfMonth(new Date());
+      return transactions
+        .filter(t => {
+          if (t.type !== 'income') return false;
+          try {
+            const date = parseISO(t.date);
+            return isWithinInterval(date, { start, end });
+          } catch {
+            return false;
+          }
+        })
+        .reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
+    } catch (err) {
+      console.error('Calculation error:', err);
+      return 0;
+    }
+  }, [transactions]);
+
+  const monthlyExpense = useMemo(() => {
+    try {
+      const start = startOfMonth(new Date());
+      const end = endOfMonth(new Date());
+      return transactions
+        .filter(t => {
+          if (t.type !== 'expense') return false;
+          try {
+            const date = parseISO(t.date);
+            return isWithinInterval(date, { start, end });
+          } catch {
+            return false;
+          }
+        })
+        .reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
+    } catch (err) {
+      console.error('Calculation error:', err);
+      return 0;
+    }
+  }, [transactions]);
+
+  const chartData = useMemo(() => {
+    const days = ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'];
+    return days.map(day => ({
+      name: day,
+      value: Math.floor(Math.random() * 500000) + 50000
+    }));
+  }, []);
+
+  const formatCurrency = (val: number) => {
+    return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(val);
+  };
+
   if (!user) {
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col justify-center px-6 font-sans">
@@ -323,43 +390,21 @@ export default function App() {
     );
   }
 
-  // Calculations
-  const filteredTransactions = useMemo(() => {
-    let list = activeCategory === 'Semua' ? transactions : transactions.filter(t => t.category === activeCategory);
-    return list;
-  }, [transactions, activeCategory]);
-
-  const totalBalance = useMemo(() => {
-    return transactions.reduce((acc, t) => t.type === 'income' ? acc + t.amount : acc - t.amount, 0);
-  }, [transactions]);
-
-  const monthlyIncome = useMemo(() => {
-    const start = startOfMonth(new Date());
-    const end = endOfMonth(new Date());
-    return transactions
-      .filter(t => t.type === 'income' && isWithinInterval(parseISO(t.date), { start, end }))
-      .reduce((acc, t) => acc + t.amount, 0);
-  }, [transactions]);
-
-  const monthlyExpense = useMemo(() => {
-    const start = startOfMonth(new Date());
-    const end = endOfMonth(new Date());
-    return transactions
-      .filter(t => t.type === 'expense' && isWithinInterval(parseISO(t.date), { start, end }))
-      .reduce((acc, t) => acc + t.amount, 0);
-  }, [transactions]);
-
-  const chartData = useMemo(() => {
-    const days = ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'];
-    return days.map(day => ({
-      name: day,
-      value: Math.floor(Math.random() * 500000) + 50000
-    }));
-  }, []);
-
-  const formatCurrency = (val: number) => {
-    return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(val);
-  };
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-[#F8FAFC] flex flex-col items-center justify-center p-6 text-center">
+        <motion.div 
+          animate={{ rotate: 360 }}
+          transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+          className="mb-4"
+        >
+          <Loader2 className="w-10 h-10 text-blue-600" />
+        </motion.div>
+        <h3 className="text-lg font-bold text-slate-900 mb-1">Menyiapkan Spreadsheet...</h3>
+        <p className="text-sm text-slate-400">Silakan tunggu sebentar sambil kami memuat data Anda.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-screen bg-[#F8FAFC] overflow-hidden font-sans">
