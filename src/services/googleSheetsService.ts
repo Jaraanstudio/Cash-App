@@ -52,6 +52,57 @@ export const createSpreadsheet = async (accessToken: string) => {
             },
           ],
         },
+        {
+          properties: {
+            title: 'Config',
+          },
+          data: [
+            {
+              startRow: 0,
+              startColumn: 0,
+              rowData: [
+                {
+                  values: [
+                    { userEnteredValue: { stringValue: 'Key' } },
+                    { userEnteredValue: { stringValue: 'Value' } },
+                  ],
+                },
+                {
+                  values: [
+                    { userEnteredValue: { stringValue: 'categories' } },
+                    { userEnteredValue: { stringValue: 'Makanan & Minuman,Transportasi,Belanja,Tagihan Rutin,Hiburan,Lainnya' } },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+        {
+          properties: {
+            title: 'Reminders',
+            gridProperties: {
+              frozenRowCount: 1,
+            },
+          },
+          data: [
+            {
+              startRow: 0,
+              startColumn: 0,
+              rowData: [
+                {
+                  values: [
+                    { userEnteredValue: { stringValue: 'ID' } },
+                    { userEnteredValue: { stringValue: 'Title' } },
+                    { userEnteredValue: { stringValue: 'Amount' } },
+                    { userEnteredValue: { stringValue: 'DueDay' } },
+                    { userEnteredValue: { stringValue: 'Status' } },
+                    { userEnteredValue: { stringValue: 'LastPaid' } },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
       ],
     }),
   });
@@ -175,6 +226,100 @@ export const deleteTransactionFromSheet = async (accessToken: string, spreadshee
 
   if (!response.ok) {
     throw new Error('Failed to delete transaction');
+  }
+
+  return await response.json();
+};
+
+export const fetchCategoriesFromSheet = async (accessToken: string, spreadsheetId: string): Promise<string[]> => {
+  const response = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Config!A2:B`, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+
+  if (!response.ok) {
+    return [];
+  }
+
+  const data = await response.json();
+  if (!data.values || !Array.isArray(data.values)) return [];
+
+  const categoriesRow = data.values.find((row: any[]) => row[0] === 'categories');
+  if (categoriesRow && categoriesRow[1]) {
+    return categoriesRow[1].split(',').map((c: string) => c.trim());
+  }
+  return [];
+};
+
+export const updateCategoriesInSheet = async (accessToken: string, spreadsheetId: string, categories: string[]) => {
+  const values = [['categories', categories.join(',')]];
+  const response = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Config!A2:B2?valueInputOption=USER_ENTERED`, {
+    method: 'PUT',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      values,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to update categories');
+  }
+
+  return await response.json();
+};
+
+export const fetchRemindersFromSheet = async (accessToken: string, spreadsheetId: string): Promise<any[]> => {
+  const response = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Reminders!A2:F`, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+
+  if (!response.ok) return [];
+
+  const data = await response.json();
+  if (!data.values || !Array.isArray(data.values)) return [];
+
+  return data.values.map((row: any[]) => ({
+    id: String(row[0] || ''),
+    title: String(row[1] || ''),
+    amount: parseFloat(row[2]) || 0,
+    dueDay: parseInt(row[3]) || 1,
+    status: row[4] || 'pending',
+    lastPaid: row[5] || '',
+  }));
+};
+
+export const addOrUpdateReminderInSheet = async (accessToken: string, spreadsheetId: string, reminder: any) => {
+  // Simple append for now. A real app would find and update.
+  const values = [
+    [
+      reminder.id,
+      reminder.title,
+      reminder.amount,
+      reminder.dueDay,
+      reminder.status,
+      reminder.lastPaid || '',
+    ],
+  ];
+
+  const response = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Reminders!A1:append?valueInputOption=USER_ENTERED`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      values,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to save reminder');
   }
 
   return await response.json();

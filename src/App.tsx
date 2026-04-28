@@ -8,11 +8,11 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { 
   LayoutDashboard, 
   Receipt, 
-  PieChart, 
+  PieChart as LucidePieChart, 
   Wallet, 
   Settings, 
   Mic, 
@@ -31,13 +31,18 @@ import {
   FileSpreadsheet
 } from 'lucide-react';
 import { 
-  BarChart, 
+  BarChart as ReBarChart, 
   Bar, 
   Tooltip, 
   ResponsiveContainer,
-  Cell
+  Cell,
+  PieChart,
+  Pie,
+  XAxis,
+  YAxis
 } from 'recharts';
-import { format, startOfMonth, endOfMonth, isWithinInterval, parseISO } from 'date-fns';
+import { format, startOfMonth, endOfMonth, isWithinInterval, parseISO, startOfDay, endOfDay, eachDayOfInterval, subDays } from 'date-fns';
+import { id } from 'date-fns/locale';
 import { motion, AnimatePresence } from 'motion/react';
 import * as sheetService from './services/googleSheetsService';
 
@@ -62,12 +67,12 @@ interface BillReminder {
   id: string;
   title: string;
   amount: number;
-  dueDate: string;
+  dueDay: number;
   status: 'pending' | 'paid' | 'overdue';
+  lastPaidMonth?: string; // e.g. "2024-05"
 }
 
-const CATEGORIES = [
-  'Semua',
+const DEFAULT_CATEGORIES = [
   'Makanan & Minuman',
   'Transportasi',
   'Belanja',
@@ -79,7 +84,7 @@ const CATEGORIES = [
 export default function App() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [reminders, setReminders] = useState<BillReminder[]>([]);
-
+  const [categories, setCategories] = useState<string[]>(DEFAULT_CATEGORIES);
   const [activeCategory, setActiveCategory] = useState('Semua');
   const [isRecording, setIsRecording] = useState(false);
   const [voiceLog, setVoiceLog] = useState('');
@@ -92,18 +97,151 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  
-  const tokenClientRef = useRef<any>(null);
-
+  const [showCategoryModal, setShowCategoryModal] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
   const [newTx, setNewTx] = useState({
     title: '',
     amount: '',
     type: 'expense' as 'expense' | 'income',
-    category: 'Makanan & Minuman'
+    category: ''
   });
+  
+  const tokenClientRef = useRef<any>(null);
 
   const CLIENT_ID = (import.meta as any).env.VITE_GOOGLE_CLIENT_ID;
   const SCOPES = 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file email profile openid';
+
+  // Memoized Calculations
+  const filteredTransactions = useMemo(() => {
+    return activeCategory === 'Semua' ? transactions : transactions.filter(t => t.category === activeCategory);
+  }, [transactions, activeCategory]);
+
+  const totalBalance = useMemo(() => {
+    return transactions.reduce((acc, t) => {
+      const amount = Number(t.amount) || 0;
+      return t.type === 'income' ? acc + amount : acc - amount;
+    }, 0);
+  }, [transactions]);
+
+  const monthlyIncome = useMemo(() => {
+    try {
+      const start = startOfMonth(new Date());
+      const end = endOfMonth(new Date());
+      return transactions
+        .filter(t => {
+          if (t.type !== 'income') return false;
+          try {
+            const date = parseISO(t.date);
+            return isWithinInterval(date, { start, end });
+          } catch {
+            return false;
+          }
+        })
+        .reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
+    } catch (err) {
+      return 0;
+    }
+  }, [transactions]);
+
+  const monthlyExpense = useMemo(() => {
+    try {
+      const start = startOfMonth(new Date());
+      const end = endOfMonth(new Date());
+      return transactions
+        .filter(t => {
+          if (t.type !== 'expense') return false;
+          try {
+            const date = parseISO(t.date);
+            return isWithinInterval(date, { start, end });
+          } catch {
+            return false;
+          }
+        })
+        .reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
+    } catch (err) {
+      return 0;
+    }
+  }, [transactions]);
+
+  const chartData = useMemo(() => {
+    const last7Days = eachDayOfInterval({
+      start: subDays(new Date(), 6),
+      end: new Date()
+    });
+
+    return last7Days.map(day => {
+      const dateStr = format(day, 'yyyy-MM-dd');
+      const dayExpense = transactions
+        .filter(t => t.date === dateStr && t.type === 'expense')
+        .reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
+      
+      return {
+        name: format(day, 'EEE', { locale: id }),
+        value: dayExpense,
+        fullDate: dateStr
+      };
+    });
+  }, [transactions]);
+
+  const categoryStats = useMemo(() => {
+    const stats: Record<string, number> = {};
+    const monthlyExps = transactions.filter(t => {
+      if (t.type !== 'expense') return false;
+      const start = startOfMonth(new Date());
+      const end = endOfMonth(new Date());
+      try {
+        return isWithinInterval(parseISO(t.date), { start, end });
+      } catch { return false; }
+    });
+
+    monthlyExps.forEach(t => {
+      stats[t.category] = (stats[t.category] || 0) + (Number(t.amount) || 0);
+    });
+
+    const COLORS = ['#2563EB', '#7C3AED', '#DB2777', '#EA580C', '#059669', '#4B5563', '#B45309'];
+    
+    return Object.entries(stats)
+      .map(([name, value], i) => ({
+        name,
+        value,
+        color: COLORS[i % COLORS.length]
+      }))
+      .sort((a, b) => b.value - a.value);
+  }, [transactions]);
+
+  const formatCurrency = useCallback((val: number) => {
+    return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(val);
+  }, []);
+
+  // Notifications Logic
+  const activeReminders = useMemo(() => {
+    const currentMonth = format(new Date(), 'yyyy-MM');
+    const dayOfMonth = new Date().getDate();
+
+    return reminders.map(rem => {
+      const isPaidThisMonth = rem.lastPaidMonth === currentMonth;
+      const status: 'pending' | 'paid' | 'overdue' = isPaidThisMonth 
+        ? 'paid' 
+        : (dayOfMonth > rem.dueDay ? 'overdue' : 'pending');
+      
+      return { ...rem, status };
+    });
+  }, [reminders]);
+
+  const notifications = useMemo(() => {
+    const dayOfMonth = new Date().getDate();
+    return activeReminders.filter(rem => {
+      // Show if today is >= rem.dueDay (e.g. 10) and not paid yet, OR if it's due soon (within 3 days)
+      return rem.status !== 'paid' && (dayOfMonth >= rem.dueDay || rem.dueDay - dayOfMonth <= 3);
+    });
+  }, [activeReminders]);
+
+  // Effects
+  useEffect(() => {
+    if (categories.length > 0 && !newTx.category) {
+      setNewTx(prev => ({ ...prev, category: categories[0] }));
+    }
+  }, [categories]);
 
   useEffect(() => {
     const initGis = () => {
@@ -117,12 +255,20 @@ export default function App() {
             return;
           }
           setAccessToken(resp.access_token);
+          localStorage.setItem('google_access_token', resp.access_token);
           await handleUserInfo(resp.access_token);
         },
       });
+      
+      const savedToken = localStorage.getItem('google_access_token');
+      const savedUser = localStorage.getItem('google_user_info');
+      if (savedToken && savedUser) {
+        setAccessToken(savedToken);
+        setUser(JSON.parse(savedUser));
+        handleUserInfo(savedToken);
+      }
     };
 
-    // Check if script is already loaded
     if ((window as any).google) {
       initGis();
     } else {
@@ -133,17 +279,25 @@ export default function App() {
     }
   }, [CLIENT_ID]);
 
+  // Logic Functions
   const handleUserInfo = async (token: string) => {
     try {
       const resp = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
         headers: { Authorization: `Bearer ${token}` }
       });
+      if (resp.status === 401) {
+        // Token expired
+        handleLogout();
+        return;
+      }
       const data = await resp.json();
-      setUser({
+      const userInfo = {
         email: data.email,
         name: data.name,
         picture: data.picture
-      });
+      };
+      setUser(userInfo);
+      localStorage.setItem('google_user_info', JSON.stringify(userInfo));
       await syncSpreadsheet(token);
     } catch (err) {
       console.error('User Info Error:', err);
@@ -158,8 +312,20 @@ export default function App() {
         sheet = await sheetService.createSpreadsheet(token);
       }
       setSpreadsheetId(sheet.id);
-      const data = await sheetService.fetchTransactionsFromSheet(token, sheet.id);
-      setTransactions(data.reverse()); // Show newest first
+      
+      const [txs, cats, rems] = await Promise.all([
+        sheetService.fetchTransactionsFromSheet(token, sheet.id),
+        sheetService.fetchCategoriesFromSheet(token, sheet.id),
+        sheetService.fetchRemindersFromSheet(token, sheet.id)
+      ]);
+      
+      setTransactions(txs.reverse());
+      if (cats && cats.length > 0) {
+        setCategories(cats);
+      }
+      if (rems && rems.length > 0) {
+        setReminders(rems);
+      }
     } catch (err: any) {
       setError('Gagal sinkronisasi dengan Google Sheets.');
       console.error(err);
@@ -181,6 +347,38 @@ export default function App() {
     setAccessToken(null);
     setSpreadsheetId(null);
     setTransactions([]);
+    localStorage.removeItem('google_access_token');
+    localStorage.removeItem('google_user_info');
+  };
+
+  const handleAddCategory = async () => {
+    if (!newCategoryName || !accessToken || !spreadsheetId) return;
+    const updated = [...categories, newCategoryName];
+    setCategories(updated);
+    setIsSyncing(true);
+    try {
+      await sheetService.updateCategoriesInSheet(accessToken, spreadsheetId, updated);
+      setNewCategoryName('');
+      setShowCategoryModal(false);
+    } catch (err) {
+      setError('Gagal menyimpan kategori baru.');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const handleDeleteCategory = async (cat: string) => {
+    if (!accessToken || !spreadsheetId) return;
+    const updated = categories.filter(c => c !== cat);
+    setCategories(updated);
+    setIsSyncing(true);
+    try {
+      await sheetService.updateCategoriesInSheet(accessToken, spreadsheetId, updated);
+    } catch (err) {
+      setError('Gagal menghapus kategori.');
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   // Manual Input Logic
@@ -203,6 +401,24 @@ export default function App() {
     try {
       await sheetService.appendTransaction(accessToken, spreadsheetId, tx);
       setTransactions([tx, ...transactions]);
+
+      // Handle Automatic Reminder Creation if category is "Tagihan Rutin"
+      if (tx.category === 'Tagihan Rutin') {
+        const existingRem = reminders.find(r => r.title.toLowerCase() === tx.title.toLowerCase());
+        if (!existingRem) {
+          const newRem: BillReminder = {
+            id: Math.random().toString(36).substr(2, 9),
+            title: tx.title,
+            amount: tx.amount,
+            dueDay: 10, // Default to 10 as requested
+            status: 'paid',
+            lastPaidMonth: format(new Date(), 'yyyy-MM')
+          };
+          await sheetService.addOrUpdateReminderInSheet(accessToken, spreadsheetId, newRem);
+          setReminders([...reminders, newRem]);
+        }
+      }
+
       setShowAddModal(false);
       setNewTx({ title: '', amount: '', type: 'expense', category: 'Makanan & Minuman' });
     } catch (err) {
@@ -280,71 +496,7 @@ export default function App() {
   };
 
   // Calculations
-  const filteredTransactions = useMemo(() => {
-    let list = activeCategory === 'Semua' ? transactions : transactions.filter(t => t.category === activeCategory);
-    return list;
-  }, [transactions, activeCategory]);
-
-  const totalBalance = useMemo(() => {
-    return transactions.reduce((acc, t) => {
-      const amount = Number(t.amount) || 0;
-      return t.type === 'income' ? acc + amount : acc - amount;
-    }, 0);
-  }, [transactions]);
-
-  const monthlyIncome = useMemo(() => {
-    try {
-      const start = startOfMonth(new Date());
-      const end = endOfMonth(new Date());
-      return transactions
-        .filter(t => {
-          if (t.type !== 'income') return false;
-          try {
-            const date = parseISO(t.date);
-            return isWithinInterval(date, { start, end });
-          } catch {
-            return false;
-          }
-        })
-        .reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
-    } catch (err) {
-      console.error('Calculation error:', err);
-      return 0;
-    }
-  }, [transactions]);
-
-  const monthlyExpense = useMemo(() => {
-    try {
-      const start = startOfMonth(new Date());
-      const end = endOfMonth(new Date());
-      return transactions
-        .filter(t => {
-          if (t.type !== 'expense') return false;
-          try {
-            const date = parseISO(t.date);
-            return isWithinInterval(date, { start, end });
-          } catch {
-            return false;
-          }
-        })
-        .reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
-    } catch (err) {
-      console.error('Calculation error:', err);
-      return 0;
-    }
-  }, [transactions]);
-
-  const chartData = useMemo(() => {
-    const days = ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'];
-    return days.map(day => ({
-      name: day,
-      value: Math.floor(Math.random() * 500000) + 50000
-    }));
-  }, []);
-
-  const formatCurrency = (val: number) => {
-    return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(val);
-  };
+  // MOVED UP TO ENSURE HOOK ORDER CONSISTENCY
 
   if (!user) {
     return (
@@ -416,7 +568,9 @@ export default function App() {
         </div>
         <div className="flex items-center gap-4">
           <div className="relative">
-            <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></span>
+            {notifications.length > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white animate-pulse"></span>
+            )}
             <Bell className="w-5 h-5 text-slate-400" />
           </div>
           <button onClick={handleLogout} className="p-2 bg-slate-50 rounded-xl text-slate-400">
@@ -429,6 +583,24 @@ export default function App() {
       <main className="flex-1 overflow-y-auto px-6 pb-24 pt-4 space-y-6">
         {activeTab === 'home' && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
+            {/* Notifications Alert */}
+            {notifications.length > 0 && (
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="bg-orange-50 border border-orange-100 p-4 rounded-[24px] flex items-center gap-4"
+              >
+                <div className="w-10 h-10 bg-orange-500 rounded-2xl flex items-center justify-center shrink-0 shadow-lg shadow-orange-500/20">
+                  <Bell className="text-white w-5 h-5" />
+                </div>
+                <div className="flex-1">
+                  <div className="text-xs font-bold text-orange-900">Tagihan Rutin Menanti!</div>
+                  <div className="text-[10px] text-orange-700 font-medium">Ada {notifications.length} tagihan yang harus dibayar bulan ini.</div>
+                </div>
+                <TrendingUp size={16} className="text-orange-400 rotate-90" />
+              </motion.div>
+            )}
+
             {/* Balance Card */}
             <div className="relative overflow-hidden bg-gradient-to-br from-blue-600 to-blue-700 rounded-3xl p-6 text-white shadow-xl shadow-blue-500/20">
               <div className="relative z-10">
@@ -458,14 +630,14 @@ export default function App() {
               </div>
               <div className="h-[120px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={chartData}>
+                  <ReBarChart data={chartData}>
                     <Tooltip cursor={{ fill: '#F1F5F9' }} content={() => null} />
                     <Bar dataKey="value" radius={[4, 4, 0, 0]}>
                       {chartData.map((_, index) => (
                         <Cell key={`cell-${index}`} fill={index === 3 ? '#2563EB' : '#DBEAFE'} />
                       ))}
                     </Bar>
-                  </BarChart>
+                  </ReBarChart>
                 </ResponsiveContainer>
               </div>
             </div>
@@ -477,16 +649,21 @@ export default function App() {
                 <button className="text-[10px] font-bold text-blue-600 hover:underline">Lihat Semua</button>
               </div>
               <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide -mx-2 px-2">
-                {reminders.slice(0, 3).map(reminder => (
-                  <div key={reminder.id} className="min-w-[160px] bg-white rounded-2xl p-4 shadow-sm border border-slate-100 shrink-0">
-                    <div className="w-8 h-8 rounded-full bg-orange-50 flex items-center justify-center mb-3">
-                      <Calendar className="w-4 h-4 text-orange-500" />
+                {activeReminders.map(reminder => (
+                  <div key={reminder.id} className={`min-w-[160px] bg-white rounded-2xl p-4 shadow-sm border shrink-0 ${reminder.status === 'overdue' ? 'border-red-100 bg-red-50/10' : 'border-slate-100'}`}>
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center mb-3 ${reminder.status === 'paid' ? 'bg-green-100' : 'bg-orange-100'}`}>
+                      <Calendar className={`w-4 h-4 ${reminder.status === 'paid' ? 'text-green-600' : 'text-orange-500'}`} />
                     </div>
                     <div className="text-xs font-bold text-slate-800 mb-1 line-clamp-1">{reminder.title}</div>
-                    <div className="text-[10px] text-slate-500 font-medium mb-2">{reminder.dueDate}</div>
+                    <div className={`text-[10px] font-bold mb-2 ${reminder.status === 'overdue' ? 'text-red-500' : 'text-slate-400'}`}>
+                      {reminder.status === 'paid' ? 'Sudah Dibayar' : `Tiap Tanggal ${reminder.dueDay}`}
+                    </div>
                     <div className="text-xs font-bold text-blue-600">{formatCurrency(reminder.amount)}</div>
                   </div>
                 ))}
+                {activeReminders.length === 0 && (
+                  <div className="text-[10px] text-slate-300 font-bold uppercase tracking-widest py-8 text-center w-full">Belum ada tagihan rutin</div>
+                )}
               </div>
             </div>
 
@@ -525,7 +702,7 @@ export default function App() {
             </div>
 
             <div className="flex gap-2 overflow-x-auto pb-4 scrollbar-hide -mx-2 px-2">
-              {CATEGORIES.map(cat => (
+              {['Semua', ...categories].map(cat => (
                 <button 
                   key={cat} 
                   onClick={() => setActiveCategory(cat)}
@@ -556,6 +733,113 @@ export default function App() {
                 </button>
               ))}
             </div>
+          </motion.div>
+        )}
+
+        {activeTab === 'report' && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-8">
+            <header className="flex justify-between items-center">
+              <h2 className="text-xl font-bold text-slate-900">Statistik</h2>
+              <div className="bg-white px-4 py-2 rounded-2xl border border-slate-100 text-xs font-bold text-slate-500">
+                {format(new Date(), 'MMMM yyyy', { locale: id })}
+              </div>
+            </header>
+
+            {/* Income vs Expense Ring */}
+            <div className="grid grid-cols-1 gap-6">
+               <div className="card text-center p-8">
+                  <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-6">Distribusi Pengeluaran</h3>
+              <div className="h-[240px] w-full flex items-center justify-center relative">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={categoryStats}
+                      innerRadius={60}
+                      outerRadius={80}
+                      paddingAngle={5}
+                      dataKey="value"
+                    >
+                      {categoryStats.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip 
+                      contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                      formatter={(value: any) => formatCurrency(value)}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                  <div className="text-[10px] uppercase tracking-widest font-bold text-slate-400">Total</div>
+                  <div className="text-lg font-bold text-slate-900">{formatCurrency(monthlyExpense)}</div>
+                </div>
+              </div>
+               </div>
+
+               <div className="space-y-3">
+                  {categoryStats.map(stat => (
+                    <div key={stat.name} className="flex items-center gap-4 bg-white p-4 rounded-2xl border border-slate-50">
+                      <div className="w-3 h-3 rounded-full" style={{ backgroundColor: stat.color }}></div>
+                      <div className="flex-1 text-sm font-bold text-slate-700">{stat.name}</div>
+                      <div className="text-sm font-bold text-slate-900">{formatCurrency(stat.value)}</div>
+                      <div className="text-[10px] font-bold text-slate-400 bg-slate-50 px-2 py-0.5 rounded">
+                        {Math.round((stat.value / (monthlyExpense || 1)) * 100)}%
+                      </div>
+                    </div>
+                  ))}
+               </div>
+            </div>
+          </motion.div>
+        )}
+
+        {activeTab === 'settings' && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-8">
+             <header>
+                <h2 className="text-xl font-bold text-slate-900">Pengaturan</h2>
+             </header>
+
+             <div className="space-y-6">
+                <div className="card">
+                   <div className="flex items-center gap-4 mb-6">
+                      <img src={user?.picture} className="w-12 h-12 rounded-2xl" alt="" />
+                      <div>
+                         <div className="text-sm font-bold text-slate-900">{user?.name}</div>
+                         <div className="text-xs text-slate-400">{user?.email}</div>
+                      </div>
+                   </div>
+                   <button 
+                    onClick={handleLogout}
+                    className="w-full py-3 rounded-xl border border-red-100 text-red-500 text-xs font-bold uppercase tracking-widest flex items-center justify-center gap-2"
+                   >
+                     <LogOut size={14} /> Keluar Akun
+                   </button>
+                </div>
+
+                <div className="card">
+                   <div className="flex justify-between items-center mb-6">
+                      <h3 className="text-sm font-bold text-slate-900">Kategori Transaksi</h3>
+                      <button 
+                        onClick={() => setShowCategoryModal(true)}
+                        className="p-1.5 bg-blue-50 text-blue-600 rounded-lg"
+                      >
+                        <Plus size={16} />
+                      </button>
+                   </div>
+                   <div className="space-y-2">
+                      {categories.map(cat => (
+                        <div key={cat} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
+                           <span className="text-xs font-bold text-slate-600">{cat}</span>
+                           <button 
+                            onClick={() => handleDeleteCategory(cat)}
+                            className="p-1 text-slate-300 hover:text-red-500 transition-colors"
+                           >
+                              <Trash2 size={14} />
+                           </button>
+                        </div>
+                      ))}
+                   </div>
+                </div>
+             </div>
           </motion.div>
         )}
       </main>
@@ -726,7 +1010,7 @@ export default function App() {
                 <div>
                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-2 px-1">Kategori</label>
                   <div className="flex gap-2 overflow-x-auto pb-4 scrollbar-hide -mx-1 px-1">
-                    {CATEGORIES.slice(1).map(cat => (
+                    {categories.map(cat => (
                       <button 
                         key={cat}
                         onClick={() => setNewTx({ ...newTx, category: cat })}
@@ -765,15 +1049,52 @@ export default function App() {
           <Receipt size={22} className={activeTab === 'tx' ? 'fill-blue-600/10' : ''} />
           <span className="text-[10px] font-bold uppercase tracking-tighter">List</span>
         </button>
-        <button className="flex flex-col items-center gap-1 text-slate-400">
-          <PieChart size={22} />
+        <button onClick={() => setActiveTab('report')} className={`flex flex-col items-center gap-1 ${activeTab === 'report' ? 'text-blue-600' : 'text-slate-400'}`}>
+          <LucidePieChart size={22} className={activeTab === 'report' ? 'fill-blue-600/10' : ''} />
           <span className="text-[10px] font-bold uppercase tracking-tighter">Stats</span>
         </button>
-        <button className="flex flex-col items-center gap-1 text-slate-400">
-          <Settings size={22} />
+        <button onClick={() => setActiveTab('settings')} className={`flex flex-col items-center gap-1 ${activeTab === 'settings' ? 'text-blue-600' : 'text-slate-400'}`}>
+          <Settings size={22} className={activeTab === 'settings' ? 'fill-blue-600/10' : ''} />
           <span className="text-[10px] font-bold uppercase tracking-tighter">Menu</span>
         </button>
       </nav>
+
+      {/* Add Category Modal */}
+      <AnimatePresence>
+        {showCategoryModal && (
+          <>
+            <motion.div 
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              onClick={() => setShowCategoryModal(false)}
+              className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[60]"
+            />
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
+              className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-3xl p-8 shadow-2xl z-[70] w-[85%] max-w-sm"
+            >
+              <h3 className="text-lg font-bold text-slate-900 mb-6">Tambah Kategori</h3>
+              <input 
+                type="text" 
+                placeholder="Nama kategori"
+                value={newCategoryName}
+                onChange={(e) => setNewCategoryName(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-100 mb-6"
+                autoFocus
+              />
+              <div className="flex gap-4">
+                 <button onClick={() => setShowCategoryModal(false)} className="flex-1 py-3 text-xs font-bold text-slate-400 uppercase tracking-widest">Batal</button>
+                 <button 
+                  onClick={handleAddCategory}
+                  disabled={!newCategoryName || isSyncing}
+                  className="flex-1 bg-blue-600 text-white rounded-2xl py-3 text-xs font-bold uppercase tracking-widest shadow-lg shadow-blue-500/20 active:scale-95 transition-all"
+                 >
+                   Simpan
+                 </button>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
 
       {/* Voice Prompt Overlay */}
       <AnimatePresence>
