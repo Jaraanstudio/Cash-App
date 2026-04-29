@@ -102,6 +102,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
+  const [editTx, setEditTx] = useState<Transaction | null>(null);
   
   const [reportFilter, setReportFilter] = useState<'week' | 'month' | 'custom'>('month');
   const [customStart, setCustomStart] = useState(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
@@ -539,6 +540,34 @@ export default function App() {
       setSelectedTx(null);
     } catch (err) {
       setError('Gagal menghapus transaksi dari Google Sheets.');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const handleUpdateTransaction = async () => {
+    if (!editTx || !accessToken || !spreadsheetId) return;
+    
+    setIsSyncing(true);
+    try {
+      let receiptUrl = editTx.receiptUrl || '';
+      if (selectedFile) {
+        receiptUrl = await sheetService.uploadFileToDrive(accessToken, selectedFile);
+      }
+
+      const updatedTx: Transaction = {
+        ...editTx,
+        receiptUrl
+      };
+
+      await sheetService.updateTransactionInSheet(accessToken, spreadsheetId, updatedTx);
+      
+      setTransactions(transactions.map(t => t.id === updatedTx.id ? updatedTx : t));
+      setEditTx(null);
+      setSelectedTx(null);
+      setSelectedFile(null);
+    } catch (err) {
+      setError('Gagal memperbarui transaksi.');
     } finally {
       setIsSyncing(false);
     }
@@ -1053,6 +1082,12 @@ export default function App() {
                 )}
 
                 <div className="flex gap-4">
+                  <button 
+                    onClick={() => setEditTx(selectedTx)} 
+                    className="flex-1 bg-slate-100 text-slate-900 rounded-2xl py-4 font-bold text-sm active:scale-95 transition-all"
+                  >
+                    Edit
+                  </button>
                   <button onClick={() => setSelectedTx(null)} className="flex-1 bg-blue-600 text-white rounded-2xl py-4 font-bold text-sm shadow-lg shadow-blue-500/20 active:scale-95 transition-all">
                     Selesai
                   </button>
@@ -1102,6 +1137,134 @@ export default function App() {
           </button>
         </div>
       </div>
+
+      {/* Edit Transaction Modal */}
+      <AnimatePresence>
+        {editTx && (
+          <>
+            <motion.div 
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              onClick={() => setEditTx(null)}
+              className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[60] px-6 py-12"
+            />
+            <motion.div 
+              initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
+              className="fixed inset-x-0 bottom-0 bg-white rounded-t-[40px] z-[70] p-8 shadow-2xl max-h-[90vh] overflow-y-auto"
+            >
+              <div className="w-12 h-1.5 bg-slate-100 rounded-full mx-auto mb-8"></div>
+              
+              <div className="flex justify-between items-center mb-8">
+                <h3 className="text-xl font-bold text-slate-900">Edit Transaksi</h3>
+                <button onClick={() => setEditTx(null)} className="p-2 bg-slate-50 rounded-xl text-slate-400">
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="space-y-6">
+                <div className="flex bg-slate-50 p-1.5 rounded-2xl border border-slate-100">
+                  <button 
+                    onClick={() => setEditTx({ ...editTx, type: 'expense' })}
+                    className={`flex-1 py-3 rounded-xl text-xs font-bold transition-all ${editTx.type === 'expense' ? 'bg-white shadow-sm text-red-500' : 'text-slate-400'}`}
+                  >
+                    Pengeluaran
+                  </button>
+                  <button 
+                    onClick={() => setEditTx({ ...editTx, type: 'income' })}
+                    className={`flex-1 py-3 rounded-xl text-xs font-bold transition-all ${editTx.type === 'income' ? 'bg-white shadow-sm text-green-600' : 'text-slate-400'}`}
+                  >
+                    Pemasukan
+                  </button>
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-2 px-1">Deskripsi</label>
+                  <input 
+                    type="text" 
+                    value={editTx.title}
+                    onChange={(e) => setEditTx({ ...editTx, title: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-100 transition-all"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-2 px-1">Jumlah (Rp)</label>
+                  <input 
+                    type="text" 
+                    inputMode="numeric"
+                    value={editTx.amount.toLocaleString('id-ID')}
+                    onChange={(e) => {
+                      const val = e.target.value.replace(/\D/g, '');
+                      setEditTx({ ...editTx, amount: val ? parseInt(val) : 0 });
+                    }}
+                    className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 text-xl font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-100 transition-all font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-2 px-1">Kategori</label>
+                  <div className="flex gap-2 overflow-x-auto pb-4 scrollbar-hide -mx-1 px-1">
+                    {categories.map(cat => (
+                      <button 
+                        key={cat}
+                        onClick={() => setEditTx({ ...editTx, category: cat })}
+                        className={`px-4 py-2.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all border ${editTx.category === cat ? 'bg-blue-600 text-white border-blue-600 shadow-md' : 'bg-slate-50 text-slate-400 border-slate-100'}`}
+                      >
+                        {cat}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1 px-1">Catatan</label>
+                  <textarea 
+                    value={editTx.notes || ''}
+                    onChange={(e) => setEditTx({ ...editTx, notes: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 text-sm font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-100 transition-all min-h-[100px]"
+                    placeholder="Tambahkan catatan..."
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-2 px-1">Nota / Bukti (Opsional)</label>
+                  <input 
+                    type="file" 
+                    accept="image/*"
+                    onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
+                    className="hidden" 
+                    id="edit-receipt-upload"
+                  />
+                  <label 
+                    htmlFor="edit-receipt-upload"
+                    className={`w-full flex items-center gap-3 p-4 border-2 border-dashed rounded-2xl cursor-pointer transition-all ${selectedFile || editTx.receiptUrl ? 'border-blue-600 bg-blue-50/50' : 'border-slate-100 bg-slate-50'}`}
+                  >
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${selectedFile || editTx.receiptUrl ? 'bg-blue-600 text-white' : 'bg-white text-slate-400 shadow-sm'}`}>
+                      {(selectedFile || editTx.receiptUrl) ? <FileText size={18} /> : <Plus size={18} />}
+                    </div>
+                    <div className="flex-1 overflow-hidden">
+                      <div className={`text-[10px] font-bold uppercase tracking-widest ${selectedFile || editTx.receiptUrl ? 'text-blue-600' : 'text-slate-400'}`}>
+                        {selectedFile ? selectedFile.name : editTx.receiptUrl ? 'Sudah ada nota' : 'Tambahkan Nota'}
+                      </div>
+                      <div className="text-[9px] text-slate-400 font-medium truncate">
+                        {selectedFile ? 'File baru siap diupload' : editTx.receiptUrl ? 'Klik untuk ganti nota' : 'Format gambar (JPG, PNG)'}
+                      </div>
+                    </div>
+                  </label>
+                </div>
+
+                <button 
+                  onClick={handleUpdateTransaction}
+                  disabled={!editTx.title || !editTx.amount || isSyncing}
+                  className="w-full bg-blue-600 text-white rounded-2xl py-4 font-bold text-sm shadow-xl shadow-blue-500/20 active:scale-95 transition-all disabled:opacity-50 disabled:grayscale flex items-center justify-center gap-2"
+                >
+                  {isSyncing && <Loader2 size={18} className="animate-spin" />}
+                  {isSyncing ? 'Memperbarui...' : 'Simpan Perubahan'}
+                </button>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
 
       {/* Manual Add Modal */}
       <AnimatePresence>

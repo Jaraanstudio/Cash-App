@@ -165,6 +165,45 @@ export const appendTransaction = async (accessToken: string, spreadsheetId: stri
   return await response.json();
 };
 
+export const updateTransactionInSheet = async (accessToken: string, spreadsheetId: string, tx: GoogleTransaction) => {
+  const txs = await fetchTransactionsFromSheet(accessToken, spreadsheetId);
+  const rowIndex = txs.findIndex(t => t.id === tx.id);
+  
+  if (rowIndex === -1) throw new Error('Transaction not found');
+
+  const actualRow = rowIndex + 2; 
+
+  const values = [
+    [
+      tx.id,
+      tx.title,
+      tx.amount,
+      tx.type,
+      tx.category,
+      tx.date,
+      tx.notes || '',
+      tx.receiptUrl || '',
+    ],
+  ];
+
+  const response = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Transactions!A${actualRow}:H${actualRow}?valueInputOption=USER_ENTERED`, {
+    method: 'PUT',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      values,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to update transaction');
+  }
+
+  return await response.json();
+};
+
 export const fetchTransactionsFromSheet = async (accessToken: string, spreadsheetId: string): Promise<GoogleTransaction[]> => {
   const response = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Transactions!A2:I`, {
     headers: {
