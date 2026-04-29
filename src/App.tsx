@@ -93,6 +93,7 @@ export default function App() {
   const [voiceLog, setVoiceLog] = useState('');
   const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
   const [activeTab, setActiveTab] = useState<'home' | 'tx' | 'report' | 'settings'>('home');
+  const [activeType, setActiveType] = useState<'all' | 'income' | 'expense'>('all');
   const [showAddModal, setShowAddModal] = useState(false);
   const [user, setUser] = useState<GoogleUser | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
@@ -123,9 +124,15 @@ export default function App() {
 
   // Memoized Calculations
   const filteredTransactions = useMemo(() => {
-    let list = activeCategory === 'Semua' ? transactions : transactions.filter(t => t.category === activeCategory);
+    let list = transactions;
+    if (activeCategory !== 'Semua') {
+      list = list.filter(t => t.category === activeCategory);
+    }
+    if (activeType !== 'all') {
+      list = list.filter(t => t.type === activeType);
+    }
     return list;
-  }, [transactions, activeCategory]);
+  }, [transactions, activeCategory, activeType]);
 
   const reportTransactions = useMemo(() => {
     let start = startOfMonth(new Date());
@@ -716,16 +723,30 @@ export default function App() {
                 <span className="text-[10px] text-blue-100 uppercase font-bold tracking-widest opacity-80">Saldo Tersedia</span>
                 <div className="text-3xl font-bold tracking-tight mt-1 mb-6">{formatCurrency(totalBalance)}</div>
                 <div className="flex gap-4">
-                  <div className="flex-1 bg-white/10 backdrop-blur-md rounded-2xl p-3 border border-white/10 transition-transform active:scale-95">
+                  <button 
+                    onClick={() => {
+                      setActiveTab('tx');
+                      setActiveType('income');
+                      setActiveCategory('Semua');
+                    }}
+                    className="flex-1 bg-white/10 backdrop-blur-md rounded-2xl p-3 border border-white/10 transition-transform active:scale-95"
+                  >
                     <TrendingUp className="w-4 h-4 text-green-400 mb-1" />
                     <div className="text-[9px] text-blue-100 uppercase font-bold">Pemasukan</div>
                     <div className="text-sm font-bold">{formatCurrency(monthlyIncome)}</div>
-                  </div>
-                  <div className="flex-1 bg-white/10 backdrop-blur-md rounded-2xl p-3 border border-white/10 transition-transform active:scale-95">
+                  </button>
+                  <button 
+                    onClick={() => {
+                      setActiveTab('tx');
+                      setActiveType('expense');
+                      setActiveCategory('Semua');
+                    }}
+                    className="flex-1 bg-white/10 backdrop-blur-md rounded-2xl p-3 border border-white/10 transition-transform active:scale-95"
+                  >
                     <TrendingDown className="w-4 h-4 text-red-400 mb-1" />
                     <div className="text-[9px] text-blue-100 uppercase font-bold">Pengeluaran</div>
                     <div className="text-sm font-bold">{formatCurrency(monthlyExpense)}</div>
-                  </div>
+                  </button>
                 </div>
               </div>
               <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -translate-y-12 translate-x-8 blur-3xl"></div>
@@ -777,7 +798,7 @@ export default function App() {
             </div>
 
             {/* Transaction List Summary */}
-            <div className="space-y-4">
+            <div className="space-y-4 pb-32">
               <h3 className="text-sm font-bold text-slate-800">Transaksi Terakhir</h3>
               <div className="space-y-3">
                 {transactions.slice(0, 5).map(t => (
@@ -808,6 +829,27 @@ export default function App() {
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-bold text-slate-800">Semua Transaksi</h2>
               <Filter className="w-5 h-5 text-slate-400" />
+            </div>
+
+            <div className="flex gap-2 overflow-x-auto pb-4 scrollbar-hide -mx-1 px-1">
+              <button 
+                onClick={() => setActiveType('all')}
+                className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all border ${activeType === 'all' ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-400 border-slate-100'}`}
+              >
+                Semua Tipe
+              </button>
+              <button 
+                onClick={() => setActiveType('income')}
+                className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all border ${activeType === 'income' ? 'bg-green-600 text-white border-green-600' : 'bg-white text-slate-400 border-slate-100'}`}
+              >
+                Pemasukan
+              </button>
+              <button 
+                onClick={() => setActiveType('expense')}
+                className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all border ${activeType === 'expense' ? 'bg-red-500 text-white border-red-500' : 'bg-white text-slate-400 border-slate-100'}`}
+              >
+                Pengeluaran
+              </button>
             </div>
 
             <div className="flex gap-2 overflow-x-auto pb-4 scrollbar-hide -mx-2 px-2">
