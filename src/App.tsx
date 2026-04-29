@@ -511,15 +511,90 @@ export default function App() {
   const processVoiceCommand = async (text: string) => {
     setVoiceLog(`Diproses: "${text}"`);
     
-    const numberMatch = text.match(/\d+/);
-    if (numberMatch && accessToken && spreadsheetId) {
-      const amount = parseInt(numberMatch[0]);
-      const title = text.replace(numberMatch[0], '').trim();
-      const type = text.toLowerCase().includes('bayar') || text.toLowerCase().includes('beli') || text.toLowerCase().includes('makan') ? 'expense' : 'income';
+    const transcript = text.toLowerCase();
+    
+    // Indonesian word numbers and multipliers
+    const multipliers: Record<string, number> = {
+      'triliun': 1000000000000,
+      'miliar': 1000000000,
+      'juta': 1000000,
+      'ribu': 1000,
+    };
+
+    const indonesianNumbers: Record<string, number> = {
+      'sepuluh': 10, 'sebelas': 11, 'dua belas': 12, 'tiga belas': 13,
+      'dua puluh': 20, 'tiga puluh': 30, 'empat puluh': 40, 'lima puluh': 50,
+      'seratus': 100, 'dua ratus': 200, 'tiga ratus': 300, 'lima ratus': 500,
+      'ribu': 1000, 'seribu': 1000, 'sejuta': 1000000,
+      'satu': 1, 'dua': 2, 'tiga': 3, 'empat': 4, 'lima': 5,
+      'enam': 6, 'tujuh': 7, 'delapan': 8, 'sembilan': 9
+    };
+
+    let amount = 0;
+    let foundAmount = false;
+
+    // 1. Check for digits (handle formats like "10.000", "15,000", or "10 ribu")
+    const cleanTranscript = transcript.replace(/\./g, '');
+    const digitsMatch = cleanTranscript.match(/(\d+)/);
+    
+    if (digitsMatch) {
+      amount = parseInt(digitsMatch[0]);
+      foundAmount = true;
       
+      // Check for multipliers after digits
+      for (const [m, factor] of Object.entries(multipliers)) {
+        if (cleanTranscript.includes(m)) {
+          if (amount < factor) amount *= factor;
+          break;
+        }
+      }
+    } else {
+      // 2. Check for word-based numbers
+      const sortedWords = Object.keys(indonesianNumbers).sort((a, b) => b.length - a.length);
+      for (const word of sortedWords) {
+        if (transcript.includes(word)) {
+          amount = indonesianNumbers[word];
+          foundAmount = true;
+          // Check for additional multipliers (e.g. "sepuluh ribu")
+          for (const [m, factor] of Object.entries(multipliers)) {
+            if (transcript.includes(m) && !word.includes(m)) {
+              amount *= factor;
+              break;
+            }
+          }
+          break;
+        }
+      }
+    }
+
+    if (foundAmount && accessToken && spreadsheetId) {
+      const type = transcript.includes('bayar') || 
+                   transcript.includes('beli') || 
+                   transcript.includes('makan') || 
+                   transcript.includes('keluar') ||
+                   transcript.includes('pengeluaran') ? 'expense' : 'income';
+      
+      // Clean up title
+      let title = text;
+      if (digitsMatch) title = title.replace(digitsMatch[0], '');
+      
+      const wordsToRemove = [
+        ...Object.keys(multipliers), 
+        ...Object.keys(indonesianNumbers), 
+        'rupiah', 'rp', 'bayar', 'beli', 'makan', 'pemasukan', 'pengeluaran', 'nominal'
+      ];
+      
+      wordsToRemove.forEach(w => {
+        const reg = new RegExp(`\\b${w}\\b`, 'gi');
+        title = title.replace(reg, '');
+      });
+
+      title = title.replace(/\s+/g, ' ').trim();
+      if (!title || title.length < 2) title = type === 'expense' ? 'Pengeluaran Suara' : 'Pemasukan Suara';
+
       const tx: sheetService.GoogleTransaction = {
         id: Math.random().toString(36).substr(2, 9),
-        title: title || 'Transaksi Baru',
+        title: title,
         amount,
         type,
         category: 'Lainnya',
@@ -530,11 +605,14 @@ export default function App() {
       try {
         await sheetService.appendTransaction(accessToken, spreadsheetId, tx);
         setTransactions([tx, ...transactions]);
+        setVoiceLog(`Berhasil: ${title} (${formatCurrency(amount)})`);
       } catch (err) {
         setError('Gagal menyimpan transaksi suara.');
       } finally {
         setIsSyncing(false);
       }
+    } else {
+      setVoiceLog(`Gagal mengenali nominal: "${text}"`);
     }
   };
 
@@ -682,7 +760,7 @@ export default function App() {
       <header className="px-6 py-6 pb-2 bg-white flex justify-between items-center z-10 shrink-0">
         <div>
           <h1 className="text-xl font-bold text-slate-900 leading-tight">Cash App</h1>
-          <p className="text-[10px] uppercase tracking-widest font-bold text-slate-400">Personal Finance</p>
+          <p className="text-[10px] uppercase tracking-widest font-bold text-slate-400">Personal Finance by Mas Pur</p>
         </div>
         <div className="flex items-center gap-4">
           <div className="relative">
