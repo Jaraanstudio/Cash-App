@@ -755,9 +755,10 @@ export default function App() {
   }
 
   return (
-    <div className="flex flex-col h-screen bg-[#F8FAFC] overflow-hidden font-sans">
-      {/* Header Mobile Style */}
-      <header className="px-6 py-6 pb-2 bg-white flex justify-between items-center z-10 shrink-0">
+    <div className="min-h-screen bg-slate-100 flex justify-center font-sans sm:py-10">
+      <div className="w-full max-w-[480px] h-[100dvh] sm:h-[844px] flex flex-col bg-[#F8FAFC] overflow-hidden relative sm:rounded-[48px] shadow-2xl border-4 border-slate-300">
+        {/* Header Mobile Style */}
+        <header className="px-6 py-6 pb-2 bg-white flex justify-between items-center z-10 shrink-0">
         <div>
           <h1 className="text-xl font-bold text-slate-900 leading-tight">Cash App</h1>
           <p className="text-[10px] uppercase tracking-widest font-bold text-slate-400">Personal Finance by Mas Pur</p>
@@ -1141,12 +1142,12 @@ export default function App() {
             <motion.div 
               initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               onClick={() => setSelectedTx(null)}
-              className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50"
+              className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm z-50"
             />
             <motion.div 
               initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
               transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-              className="fixed inset-x-0 bottom-0 bg-white rounded-t-[40px] z-50 p-8 shadow-2xl max-h-[85vh] overflow-y-auto"
+              className="absolute inset-x-0 bottom-0 bg-white rounded-t-[40px] z-50 p-8 shadow-2xl max-h-[85%] overflow-y-auto"
             >
               <div className="w-12 h-1.5 bg-slate-100 rounded-full mx-auto mb-8"></div>
               
@@ -1228,7 +1229,7 @@ export default function App() {
       </AnimatePresence>
 
       {/* Floating Action Button for Adding (Manual/Voice) */}
-      <div className="fixed bottom-24 right-6 flex flex-col gap-3 z-40">
+      <div className="absolute bottom-24 right-6 flex flex-col gap-3 z-40">
         <AnimatePresence>
           {isRecording && (
             <motion.div 
@@ -1267,11 +1268,11 @@ export default function App() {
             <motion.div 
               initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               onClick={() => setEditTx(null)}
-              className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[60] px-6 py-12"
+              className="absolute inset-0 bg-slate-900/60 backdrop-blur-md z-[60] px-6 py-12"
             />
             <motion.div 
               initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
-              className="fixed inset-x-0 bottom-0 bg-white rounded-t-[40px] z-[70] p-8 shadow-2xl max-h-[90vh] overflow-y-auto"
+              className="absolute inset-x-0 bottom-0 bg-white rounded-t-[40px] z-[70] p-8 shadow-2xl max-h-[90%] overflow-y-auto"
             >
               <div className="w-12 h-1.5 bg-slate-100 rounded-full mx-auto mb-8"></div>
               
@@ -1395,11 +1396,11 @@ export default function App() {
             <motion.div 
               initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               onClick={() => setShowAddModal(false)}
-              className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-50 px-6 py-12"
+              className="absolute inset-0 bg-slate-900/60 backdrop-blur-md z-50 px-6 py-12"
             />
             <motion.div 
               initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
-              className="fixed inset-x-0 bottom-0 bg-white rounded-t-[40px] z-50 p-8 shadow-2xl max-h-[90vh] overflow-y-auto"
+              className="absolute inset-x-0 bottom-0 bg-white rounded-t-[40px] z-50 p-8 shadow-2xl max-h-[90%] overflow-y-auto"
             >
               <div className="w-12 h-1.5 bg-slate-100 rounded-full mx-auto mb-8"></div>
               
@@ -1521,7 +1522,7 @@ export default function App() {
       {/* (Removed redundant FAB logic replacement above) */}
 
       {/* Bottom Navigation */}
-      <nav className="fixed bottom-0 inset-x-0 bg-white border-t border-slate-100 flex items-center justify-around py-4 pb-8 z-30">
+      <nav className="absolute bottom-0 inset-x-0 bg-white border-t border-slate-100 flex items-center justify-around py-4 pb-8 z-30">
         <button onClick={() => setActiveTab('home')} className={`flex flex-col items-center gap-1 ${activeTab === 'home' ? 'text-blue-600' : 'text-slate-400'}`}>
           <LayoutDashboard size={22} className={activeTab === 'home' ? 'fill-blue-600/10' : ''} />
           <span className="text-[10px] font-bold uppercase tracking-tighter">Home</span>
@@ -1547,11 +1548,11 @@ export default function App() {
             <motion.div 
               initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               onClick={() => setShowCategoryModal(false)}
-              className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[60]"
+              className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm z-[60]"
             />
             <motion.div 
               initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
-              className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-3xl p-8 shadow-2xl z-[70] w-[85%] max-w-sm"
+              className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-3xl p-8 shadow-2xl z-[70] w-[85%] max-w-sm"
             >
               <h3 className="text-lg font-bold text-slate-900 mb-6">Tambah Kategori</h3>
               <input 
@@ -1592,6 +1593,7 @@ export default function App() {
           </motion.div>
         )}
       </AnimatePresence>
+      </div>
     </div>
   );
 }
