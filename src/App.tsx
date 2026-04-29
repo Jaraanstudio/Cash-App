@@ -540,6 +540,8 @@ export default function App() {
 
   const deleteTx = async (id: string) => {
     if (!accessToken || !spreadsheetId) return;
+    if (!window.confirm('Apakah Anda yakin ingin menghapus transaksi ini?')) return;
+    
     setIsSyncing(true);
     try {
       await sheetService.deleteTransactionFromSheet(accessToken, spreadsheetId, id);

@@ -234,16 +234,22 @@ export const fetchTransactionsFromSheet = async (accessToken: string, spreadshee
 };
 
 export const deleteTransactionFromSheet = async (accessToken: string, spreadsheetId: string, txId: string) => {
-  // To delete in Sheets API, we usually need to find the row index first
-  // Alternatively, we can fetch all, filter, and rewrite. For simplicity in a mobile app, 
-  // clear and re-write might be slow. A better way is to find the row index.
+  // First, get the sheet metadata to find the Gid (sheetId) for the "Transactions" sheet
+  const ssResponse = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}`, {
+    headers: { Authorization: `Bearer ${accessToken}` }
+  });
+  
+  if (!ssResponse.ok) throw new Error('Failed to fetch spreadsheet metadata');
+  const ssData = await ssResponse.json();
+  const txSheet = ssData.sheets.find((s: any) => s.properties.title === 'Transactions');
+  const gid = txSheet ? txSheet.properties.sheetId : 0;
+
   const txs = await fetchTransactionsFromSheet(accessToken, spreadsheetId);
   const rowIndex = txs.findIndex(tx => tx.id === txId);
   
   if (rowIndex === -1) return;
 
-  // Actual row in sheet is rowIndex + 2 (1-indexed + header)
-  const actualRow = rowIndex + 1; // 0-indexed for requests usually, but Sheets API delete range is different
+  const actualRow = rowIndex + 1; // 0-indexed for requests (startIndex 1 = Row 2)
 
   const response = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`, {
     method: 'POST',
@@ -256,10 +262,10 @@ export const deleteTransactionFromSheet = async (accessToken: string, spreadshee
         {
           deleteDimension: {
             range: {
-              sheetId: 0, // Assuming first sheet
+              sheetId: gid,
               dimension: 'ROWS',
-              startIndex: actualRow, // 0-based, inclusive
-              endIndex: actualRow + 1, // 0-based, exclusive
+              startIndex: actualRow, 
+              endIndex: actualRow + 1,
             },
           },
         },
