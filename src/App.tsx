@@ -296,6 +296,17 @@ export default function App() {
   }, [categories]);
 
   useEffect(() => {
+    const checkHealth = async () => {
+      try {
+        const h = await fetch('/api/health');
+        const data = await h.json();
+        console.log("Server Health:", data);
+      } catch (e) {
+        console.error("Health check failed:", e);
+      }
+    };
+    checkHealth();
+
     const fetchConfig = async (retries = 3) => {
       try {
         setIsConfigLoading(true);
@@ -303,30 +314,28 @@ export default function App() {
         if (resp.ok) {
           const data = await resp.json();
           if (!data.googleClientId) {
-            setConfigError("GOOGLE_CLIENT_ID tidak ditemukan di server. Pastikan sudah diatur di menu Secrets.");
+            setConfigError("GOOGLE_CLIENT_ID tidak ditemukan di server (null).");
           } else {
             setConfigError(null);
           }
           setGoogleConfig(data);
           setIsConfigLoading(false);
         } else if (retries > 0) {
-          console.log(`Config fetch failed, retrying... (${retries} left)`);
-          setTimeout(() => fetchConfig(retries - 1), 2000);
+          console.warn(`Config fetch failed with status ${resp.status}, retrying... (${retries} left)`);
+          setTimeout(() => fetchConfig(retries - 1), 1500);
         } else {
-          setConfigError("Gagal mengambil konfigurasi dari server.");
+          setConfigError(`Koneksi Server Gagal (Status: ${resp.status}). Silakan Refresh.`);
           setIsConfigLoading(false);
         }
       } catch (err) {
         if (retries > 0) {
-          console.log(`Config fetch error, retrying... (${retries} left)`);
-          setTimeout(() => fetchConfig(retries - 1), 2000);
+          console.warn(`Config fetch error, retrying... (${retries} left)`, err);
+          setTimeout(() => fetchConfig(retries - 1), 1500);
         } else {
-          console.error('Failed to fetch config', err);
-          setConfigError("Gagal terhubung ke server konfigurasi.");
+          console.error('Final config fetch error:', err);
+          setConfigError("Server tidak merespon. Periksa koneksi internet Anda.");
           setIsConfigLoading(false);
         }
-      } finally {
-        // Handled in paths
       }
     };
     fetchConfig();

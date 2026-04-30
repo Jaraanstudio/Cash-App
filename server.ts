@@ -2,17 +2,28 @@ import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
 import { fileURLToPath } from "url";
+import * as dotenv from "dotenv";
+
+// Load .env files
+dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 console.log("Starting server.ts...");
+console.log("Available Env Keys:", Object.keys(process.env).filter(k => k.includes('GOOGLE') || k.includes('VITE')));
 
 async function startServer() {
-  const app = express();
-  const PORT = 3000;
+  try {
+    const app = express();
+    const PORT = 3000;
 
-  app.use(express.json({ limit: '50mb' }));
+    app.use(express.json({ limit: '50mb' }));
+
+    app.use((req, res, next) => {
+      console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+      next();
+    });
 
   // Debug API
   app.get("/api/health", (req, res) => {
@@ -21,10 +32,10 @@ async function startServer() {
 
   // API Routes - HARUS DI ATAS VITE MIDDLEWARE
   app.get("/api/config", (req, res) => {
+    console.log("DEBUG: Incoming request to /api/config");
     const clientId = process.env.GOOGLE_CLIENT_ID || process.env.VITE_GOOGLE_CLIENT_ID;
-    console.log("Request /api/config, Client ID exists:", !!clientId);
+    console.log("DEBUG: Resolved Client ID exists:", !!clientId);
     
-    // Always return 200, even if client id is missing (error handled on frontend)
     res.status(200).json({
       googleClientId: clientId || null,
     });
@@ -80,9 +91,12 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-  });
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`Server running on http://localhost:${PORT}`);
+    });
+  } catch (error) {
+    console.error("FAILED TO START SERVER:", error);
+  }
 }
 
 startServer();
