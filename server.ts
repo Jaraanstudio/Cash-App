@@ -14,8 +14,14 @@ async function startServer() {
 
   // Provide non-sensitive but environment-specific config
   app.get("/api/config", (req, res) => {
+    const clientId = process.env.GOOGLE_CLIENT_ID || process.env.VITE_GOOGLE_CLIENT_ID;
+    if (!clientId) {
+      console.error("WARNING: GOOGLE_CLIENT_ID is missing in environment variables!");
+    } else {
+      console.log("GOOGLE_CLIENT_ID loaded successfully.");
+    }
     res.json({
-      googleClientId: process.env.GOOGLE_CLIENT_ID || process.env.VITE_GOOGLE_CLIENT_ID,
+      googleClientId: clientId || null,
     });
   });
 
