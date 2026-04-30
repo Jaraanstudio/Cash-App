@@ -307,33 +307,33 @@ export default function App() {
     };
     checkHealth();
 
-    const fetchConfig = async (retries = 3) => {
+    const fetchConfig = async (retries = 5) => {
       try {
         setIsConfigLoading(true);
         const resp = await fetch('/api/config');
         if (resp.ok) {
           const data = await resp.json();
           if (!data.googleClientId) {
-            setConfigError("Client ID tidak ditemukan di Secrets.");
+            setConfigError("Google Client ID belum diatur. Silakan masukkan di menu Secrets (ikon kunci di atas).");
           } else {
             setConfigError(null);
           }
           setGoogleConfig(data);
           setIsConfigLoading(false);
         } else if (retries > 0) {
-          console.warn(`Config fetch failed with status ${resp.status}, retrying... (${retries} left)`);
-          setTimeout(() => fetchConfig(retries - 1), 1500);
+          console.warn(`Config fetch failed (status ${resp.status}), retrying in 2s...`);
+          setTimeout(() => fetchConfig(retries - 1), 2000);
         } else {
-          setConfigError(`Koneksi Server Gagal (Status: ${resp.status}). Silakan Refresh.`);
+          setConfigError(`Gagal menghubungi server (Status: ${resp.status}). Coba muat ulang halaman.`);
           setIsConfigLoading(false);
         }
       } catch (err) {
         if (retries > 0) {
-          console.warn(`Config fetch error, retrying... (${retries} left)`, err);
-          setTimeout(() => fetchConfig(retries - 1), 1500);
+          console.warn(`Config fetch error, retrying...`, err);
+          setTimeout(() => fetchConfig(retries - 1), 2000);
         } else {
-          console.error('Final config fetch error:', err);
-          setConfigError("Server tidak merespon. Periksa koneksi internet Anda.");
+          console.error('Config fetch fatal error:', err);
+          setConfigError("Koneksi terputus. Pastikan server aplikasi berjalan.");
           setIsConfigLoading(false);
         }
       }

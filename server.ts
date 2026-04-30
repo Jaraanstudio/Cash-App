@@ -30,20 +30,15 @@ async function startServer() {
     res.json({ status: "ok", time: new Date().toISOString() });
   });
 
-  // API Routes - HARUS DI ATAS VITE MIDDLEWARE
-  app.get("/api/config", (req, res) => {
-    const clientId = process.env.GOOGLE_CLIENT_ID || process.env.VITE_GOOGLE_CLIENT_ID;
-    
-    if (!clientId) {
-      console.warn("!! GOOGLE_CLIENT_ID TIDAK DITEMUKAN !! Pastikan sudah diatur di menu Secrets.");
-    } else {
-      console.log("GOOGLE_CLIENT_ID berhasil dimuat.");
-    }
-
-    res.json({
-      googleClientId: clientId || null,
+    // API Config - Harus dipanggil di awal oleh Frontend
+    app.get("/api/config", (req, res) => {
+      const clientId = process.env.GOOGLE_CLIENT_ID || process.env.VITE_GOOGLE_CLIENT_ID;
+      console.log(`[API] Config request. Client ID Found: ${!!clientId}`);
+      
+      res.json({
+        googleClientId: clientId || null,
+      });
     });
-  });
 
   app.post("/api/google-proxy", async (req, res) => {
     const { url, method, headers, body } = req.body;
