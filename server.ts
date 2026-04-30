@@ -6,26 +6,30 @@ import { fileURLToPath } from "url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+console.log("Starting server.ts...");
+
 async function startServer() {
   const app = express();
   const PORT = 3000;
 
   app.use(express.json({ limit: '50mb' }));
 
-  // Provide non-sensitive but environment-specific config
+  // Debug API
+  app.get("/api/health", (req, res) => {
+    res.json({ status: "ok", time: new Date().toISOString() });
+  });
+
+  // API Routes - HARUS DI ATAS VITE MIDDLEWARE
   app.get("/api/config", (req, res) => {
     const clientId = process.env.GOOGLE_CLIENT_ID || process.env.VITE_GOOGLE_CLIENT_ID;
-    if (!clientId) {
-      console.error("WARNING: GOOGLE_CLIENT_ID is missing in environment variables!");
-    } else {
-      console.log("GOOGLE_CLIENT_ID loaded successfully.");
-    }
-    res.json({
+    console.log("Request /api/config, Client ID exists:", !!clientId);
+    
+    // Always return 200, even if client id is missing (error handled on frontend)
+    res.status(200).json({
       googleClientId: clientId || null,
     });
   });
 
-  // API Routes - Proxying Google APIs to keep logic on server
   app.post("/api/google-proxy", async (req, res) => {
     const { url, method, headers, body } = req.body;
     const accessToken = req.headers.authorization;

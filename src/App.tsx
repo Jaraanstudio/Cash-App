@@ -296,7 +296,7 @@ export default function App() {
   }, [categories]);
 
   useEffect(() => {
-    const fetchConfig = async () => {
+    const fetchConfig = async (retries = 3) => {
       try {
         setIsConfigLoading(true);
         const resp = await fetch('/api/config');
@@ -304,16 +304,29 @@ export default function App() {
           const data = await resp.json();
           if (!data.googleClientId) {
             setConfigError("GOOGLE_CLIENT_ID tidak ditemukan di server. Pastikan sudah diatur di menu Secrets.");
+          } else {
+            setConfigError(null);
           }
           setGoogleConfig(data);
+          setIsConfigLoading(false);
+        } else if (retries > 0) {
+          console.log(`Config fetch failed, retrying... (${retries} left)`);
+          setTimeout(() => fetchConfig(retries - 1), 2000);
         } else {
           setConfigError("Gagal mengambil konfigurasi dari server.");
+          setIsConfigLoading(false);
         }
       } catch (err) {
-        console.error('Failed to fetch config', err);
-        setConfigError("Gagal terhubung ke server konfigurasi.");
+        if (retries > 0) {
+          console.log(`Config fetch error, retrying... (${retries} left)`);
+          setTimeout(() => fetchConfig(retries - 1), 2000);
+        } else {
+          console.error('Failed to fetch config', err);
+          setConfigError("Gagal terhubung ke server konfigurasi.");
+          setIsConfigLoading(false);
+        }
       } finally {
-        setIsConfigLoading(false);
+        // Handled in paths
       }
     };
     fetchConfig();
