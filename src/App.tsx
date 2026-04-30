@@ -314,7 +314,7 @@ export default function App() {
         if (resp.ok) {
           const data = await resp.json();
           if (!data.googleClientId) {
-            setConfigError("GOOGLE_CLIENT_ID tidak ditemukan di server (null).");
+            setConfigError("Client ID tidak ditemukan di Secrets.");
           } else {
             setConfigError(null);
           }

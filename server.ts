@@ -32,11 +32,15 @@ async function startServer() {
 
   // API Routes - HARUS DI ATAS VITE MIDDLEWARE
   app.get("/api/config", (req, res) => {
-    console.log("DEBUG: Incoming request to /api/config");
     const clientId = process.env.GOOGLE_CLIENT_ID || process.env.VITE_GOOGLE_CLIENT_ID;
-    console.log("DEBUG: Resolved Client ID exists:", !!clientId);
     
-    res.status(200).json({
+    if (!clientId) {
+      console.warn("!! GOOGLE_CLIENT_ID TIDAK DITEMUKAN !! Pastikan sudah diatur di menu Secrets.");
+    } else {
+      console.log("GOOGLE_CLIENT_ID berhasil dimuat.");
+    }
+
+    res.json({
       googleClientId: clientId || null,
     });
   });
