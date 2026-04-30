@@ -110,6 +110,7 @@ export default function App() {
   const [customEnd, setCustomEnd] = useState(format(endOfMonth(new Date()), 'yyyy-MM-dd'));
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
+  const [googleConfig, setGoogleConfig] = useState<{ googleClientId: string } | null>(null);
   const [newTx, setNewTx] = useState({
     title: '',
     amount: '',
@@ -119,7 +120,6 @@ export default function App() {
   
   const tokenClientRef = useRef<any>(null);
 
-  const CLIENT_ID = (import.meta as any).env.VITE_GOOGLE_CLIENT_ID;
   const SCOPES = 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file email profile openid';
 
   // Memoized Calculations
@@ -294,10 +294,25 @@ export default function App() {
   }, [categories]);
 
   useEffect(() => {
+    const fetchConfig = async () => {
+      try {
+        const resp = await fetch('/api/config');
+        if (resp.ok) {
+          const data = await resp.json();
+          setGoogleConfig(data);
+        }
+      } catch (err) {
+        console.error('Failed to fetch config', err);
+      }
+    };
+    fetchConfig();
+  }, []);
+
+  useEffect(() => {
     const initGis = () => {
-      if (!(window as any).google) return;
+      if (!(window as any).google || !googleConfig?.googleClientId) return;
       tokenClientRef.current = (window as any).google.accounts.oauth2.initTokenClient({
-        client_id: CLIENT_ID,
+        client_id: googleConfig.googleClientId,
         scope: SCOPES,
         callback: async (resp: any) => {
           if (resp.error) {
@@ -319,15 +334,15 @@ export default function App() {
       }
     };
 
-    if ((window as any).google) {
+    if ((window as any).google && googleConfig?.googleClientId) {
       initGis();
-    } else {
+    } else if (googleConfig?.googleClientId) {
       const script = document.querySelector('script[src="https://accounts.google.com/gsi/client"]');
       if (script) {
         script.addEventListener('load', initGis);
       }
     }
-  }, [CLIENT_ID]);
+  }, [googleConfig, SCOPES]);
 
   // Logic Functions
   const handleUserInfo = async (token: string) => {
