@@ -307,33 +307,66 @@ export default function App() {
     };
     checkHealth();
 
-    const fetchConfig = async (retries = 5) => {
+    const fetchConfig = async (retries = 3) => {
       try {
         setIsConfigLoading(true);
         const resp = await fetch('/api/config');
+        
         if (resp.ok) {
           const data = await resp.json();
           if (!data.googleClientId) {
-            setConfigError("Google Client ID belum diatur. Silakan masukkan di menu Secrets (ikon kunci di atas).");
+            // Check fallback
+            const fallback = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+            if (fallback) {
+              setGoogleConfig({ googleClientId: fallback });
+              setConfigError(null);
+            } else {
+              setConfigError("Google Client ID belum diatur. Masukkan di menu Secrets (ikon kunci di atas) atau sebagai VITE_GOOGLE_CLIENT_ID.");
+            }
           } else {
+            setGoogleConfig(data);
             setConfigError(null);
           }
-          setGoogleConfig(data);
           setIsConfigLoading(false);
-        } else if (retries > 0) {
-          console.warn(`Config fetch failed (status ${resp.status}), retrying in 2s...`);
+          return;
+        } 
+        
+        if (resp.status === 404) {
+          // Static host detection (like Netlify)
+          console.warn("API config not found, likely a static host. Checking VITE fallback...");
+          const fallback = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+          if (fallback) {
+            setGoogleConfig({ googleClientId: fallback });
+            setConfigError(null);
+            setIsConfigLoading(false);
+            return;
+          }
+          // No fallback found
+          setConfigError("Host statis terdeteksi (seperti Netlify). Harap tambahkan VITE_GOOGLE_CLIENT_ID ke variabel lingkungan dashboard Anda.");
+          setIsConfigLoading(false);
+          return;
+        }
+
+        if (retries > 0) {
+          console.warn(`Config fetch failed (status ${resp.status}), retrying...`);
           setTimeout(() => fetchConfig(retries - 1), 2000);
         } else {
-          setConfigError(`Gagal menghubungi server (Status: ${resp.status}). Coba muat ulang halaman.`);
+          setConfigError(`Gagal menghubungi server (Status: ${resp.status}). Periksa koneksi.`);
           setIsConfigLoading(false);
         }
       } catch (err) {
-        if (retries > 0) {
-          console.warn(`Config fetch error, retrying...`, err);
+        // Network errors or others
+        const fallback = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+        if (fallback) {
+          console.log("Network error but fallback ID found.");
+          setGoogleConfig({ googleClientId: fallback });
+          setConfigError(null);
+          setIsConfigLoading(false);
+        } else if (retries > 0) {
           setTimeout(() => fetchConfig(retries - 1), 2000);
         } else {
           console.error('Config fetch fatal error:', err);
-          setConfigError("Koneksi terputus. Pastikan server aplikasi berjalan.");
+          setConfigError("Koneksi gagal. Jika menggunakan Netlify, pastikan VITE_GOOGLE_CLIENT_ID sudah diatur.");
           setIsConfigLoading(false);
         }
       }

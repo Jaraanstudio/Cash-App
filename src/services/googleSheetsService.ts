@@ -3,21 +3,40 @@ const SPREADSHEET_NAME = 'Kaspur_Data';
 
 const proxyFetch = async (url: string, options: any = {}) => {
   const { accessToken, ...rest } = options;
-  const response = await fetch('/api/google-proxy', {
-    method: 'POST',
+  
+  try {
+    const response = await fetch('/api/google-proxy', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({
+        url,
+        method: rest.method || 'GET',
+        headers: rest.headers || {},
+        body: rest.body ? JSON.parse(rest.body) : undefined,
+      }),
+    });
+
+    if (response.status !== 404) {
+      return response;
+    }
+    // If 404, proxy endpoint might not exist (Static deployment)
+    console.warn("Proxy not found, falling back to direct fetch...");
+  } catch (err) {
+    console.warn("Proxy call failed, falling back to direct fetch...", err);
+  }
+
+  // Fallback to direct fetch
+  return fetch(url, {
+    method: rest.method || 'GET',
     headers: {
-      'Content-Type': 'application/json',
+      ...rest.headers,
       'Authorization': `Bearer ${accessToken}`,
     },
-    body: JSON.stringify({
-      url,
-      method: rest.method || 'GET',
-      headers: rest.headers || {},
-      body: rest.body ? JSON.parse(rest.body) : undefined,
-    }),
+    body: rest.body,
   });
-
-  return response;
 };
 
 export interface GoogleTransaction {
