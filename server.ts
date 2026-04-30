@@ -11,8 +11,6 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 console.log("Starting server.ts...");
-console.log("Available Env Keys:", Object.keys(process.env).filter(k => k.includes('GOOGLE') || k.includes('VITE')));
-
 async function startServer() {
   try {
     const app = express();

@@ -847,29 +847,29 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-100 flex justify-center font-sans sm:py-10">
-      <div className="w-full max-w-[480px] h-[100dvh] sm:h-[844px] flex flex-col bg-[#F8FAFC] overflow-hidden relative sm:rounded-[48px] shadow-2xl border-4 border-slate-300">
+    <div className="min-h-screen bg-white flex justify-center font-sans">
+      <div className="w-full lg:max-w-none h-[100dvh] flex flex-col bg-[#F8FAFC] overflow-hidden relative shadow-none border-0 rounded-none md:max-w-2xl md:border-x md:border-slate-100">
         {/* Header Mobile Style */}
-        <header className="px-6 py-6 pb-2 bg-white flex justify-between items-center z-10 shrink-0">
-        <div>
-          <h1 className="text-xl font-bold text-slate-900 leading-tight">Cash App</h1>
-          <p className="text-[10px] uppercase tracking-widest font-bold text-slate-400">Personal Finance by Mas Pur</p>
-        </div>
-        <div className="flex items-center gap-4">
-          <div className="relative">
-            {notifications.length > 0 && (
-              <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white animate-pulse"></span>
-            )}
-            <Bell className="w-5 h-5 text-slate-400" />
+        <header className="px-6 py-6 pb-2 bg-white flex justify-between items-center z-10 shrink-0 border-b border-slate-50">
+          <div>
+            <h1 className="text-xl font-bold text-slate-900 leading-tight">Cash App</h1>
+            <p className="text-[10px] uppercase tracking-widest font-bold text-slate-400">Personal Finance by Mas Pur</p>
           </div>
-          <button onClick={handleLogout} className="p-2 bg-slate-50 rounded-xl text-slate-400">
-            <LogOut size={20} />
-          </button>
-        </div>
-      </header>
+          <div className="flex items-center gap-4">
+            <div className="relative">
+              {notifications.length > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white animate-pulse"></span>
+              )}
+              <Bell className="w-5 h-5 text-slate-400" />
+            </div>
+            <button onClick={handleLogout} className="p-2 bg-slate-50 rounded-xl text-slate-400">
+              <LogOut size={20} />
+            </button>
+          </div>
+        </header>
 
-      {/* Main Content Area */}
-      <main className="flex-1 overflow-y-auto px-6 pb-24 pt-4 space-y-6">
+        {/* Main Content Area */}
+        <main className="flex-1 overflow-y-auto px-6 pb-24 pt-4 space-y-6 scrollbar-hide">
         {activeTab === 'home' && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
             {/* Notifications Alert */}
@@ -926,10 +926,10 @@ export default function App() {
             </div>
 
             {/* Quick Chart */}
-            <div className="card">
+            <div className="bg-white rounded-2xl p-6 border border-slate-50 shadow-sm">
               <div className="flex justify-between items-center mb-6">
                 <h3 className="text-sm font-bold text-slate-800">Tren Mingguan</h3>
-                <div className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded-md">Mei 2024</div>
+                <div className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded-md">{format(new Date(), 'MMMM yyyy', { locale: id })}</div>
               </div>
               <div className="h-[120px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
@@ -937,7 +937,7 @@ export default function App() {
                     <Tooltip cursor={{ fill: '#F1F5F9' }} content={() => null} />
                     <Bar dataKey="value" radius={[4, 4, 0, 0]}>
                       {chartData.map((_, index) => (
-                        <Cell key={`cell-${index}`} fill={index === 3 ? '#2563EB' : '#DBEAFE'} />
+                        <Cell key={`cell-${index}`} fill={index === chartData.length - 1 ? '#2563EB' : '#DBEAFE'} />
                       ))}
                     </Bar>
                   </ReBarChart>
@@ -949,7 +949,10 @@ export default function App() {
             <div className="space-y-3">
               <div className="flex justify-between items-center">
                 <h3 className="text-sm font-bold text-slate-800">Tagihan Terdekat</h3>
-                <button className="text-[10px] font-bold text-blue-600 hover:underline">Lihat Semua</button>
+                <button 
+                  onClick={() => setActiveTab('settings')}
+                  className="text-[10px] font-bold text-blue-600 hover:underline"
+                >Lihat Semua</button>
               </div>
               <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide -mx-2 px-2">
                 {activeReminders.map(reminder => (
@@ -1130,7 +1133,7 @@ export default function App() {
                     <div className="text-sm font-bold text-slate-900">{formatCurrency(reportStats.expense)}</div>
                   </div>
                 </div>
-               <div className="card text-center p-8">
+               <div className="bg-white rounded-3xl p-8 border border-slate-50 shadow-sm text-center">
                   <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-6">Distribusi Pengeluaran</h3>
               <div className="h-[240px] w-full flex items-center justify-center relative">
                 <ResponsiveContainer width="100%" height="100%">
@@ -1176,13 +1179,13 @@ export default function App() {
         )}
 
         {activeTab === 'settings' && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-8">
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-8 pb-40">
              <header>
                 <h2 className="text-xl font-bold text-slate-900">Pengaturan</h2>
              </header>
 
              <div className="space-y-6">
-                <div className="card">
+                <div className="bg-white p-6 rounded-3xl border border-slate-50 shadow-sm">
                    <div className="flex items-center gap-4 mb-6">
                       <img src={user?.picture} className="w-12 h-12 rounded-2xl" alt="" />
                       <div>
@@ -1198,7 +1201,7 @@ export default function App() {
                    </button>
                 </div>
 
-                <div className="card">
+                <div className="bg-white p-6 rounded-3xl border border-slate-50 shadow-sm">
                    <div className="flex justify-between items-center mb-6">
                       <h3 className="text-sm font-bold text-slate-900">Kategori Transaksi</h3>
                       <button 
